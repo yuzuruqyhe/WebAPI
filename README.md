@@ -7,43 +7,31 @@ http://www.cnblogs.com/UliiAn/p/5402146.html
 
 
    首先，我们实现一个AuthorizatoinFilter可以用以简单的权限控制：
-    public class PortalExceptionFilter : IExceptionFilter
+   
+   public class AuthFilterAttribute : AuthorizationFilterAttribute
     {
-        public bool AllowMultiple { get { return true; } }
-
-        public Task ExecuteExceptionFilterAsync(
-                HttpActionExecutedContext actionExecutedContext,
-                CancellationToken cancellationToken)
+        public override void OnAuthorization(HttpActionContext actionContext)
         {
-            return Task.Factory.StartNew(() =>
+            //如果用户方位的Action带有AllowAnonymousAttribute，则不进行授权验证
+            if (actionContext.ActionDescriptor.GetCustomAttributes<AllowAnonymousAttribute>().Any())
             {
-                Logger.Error("web service error", actionExecutedContext.Exception);
+                return;
+            }
+            var verifyResult = actionContext.Request.Headers.Authorization!=null &&  //要求请求中需要带有Authorization头
+                               actionContext.Request.Headers.Authorization.Parameter == "123456"; //并且Authorization参数为123456则验证通过
 
-
-
-                if (actionExecutedContext.Exception is TopException)
-                {
-                    //TODO:记录日志
-                    actionExecutedContext.Response = actionExecutedContext.Request.CreateResponse(
-                            HttpStatusCode.BadRequest, new { Message = actionExecutedContext.Exception.Message });
-                }
-                else
-                {
-                    //如果截获异常是我没无法预料的异常，则将通用的返回信息返回给用户，避免泄露过多信息，也便于用户处理
-
-                    //TODO:记录日志
-                    actionExecutedContext.Response =
-                            actionExecutedContext.Request.CreateResponse(HttpStatusCode.InternalServerError,
-                                new { Message = "服务器被外星人拐跑了！" });
-                }
-
-
-
-
-            }, cancellationToken);
+            if (!verifyResult)
+            {
+                //如果验证不通过，则返回401错误，并且Body中写入错误原因
+                actionContext.Response = actionContext.Request.CreateErrorResponse(HttpStatusCode.Unauthorized,new HttpError("Token 不正确"));
+            }
         }
     }
-
+    
+    
+    一个简单的用于用户验证的Filter就开发完了，这个Filter要求用户的请求中带有Authorization头并且参数为123456，如果通过则放行，不通过则返回401错误，并在Content中提示Token不正确。     
+   
+  
 
     一个简单的用于用户验证的Filter就开发完了，这个Filter要求用户的请求中带有Authorization头并且参数为123456，如果通过则放行，不通过则返回401错误，并在Content中提示Token不正确。下面，我们需要注册这个Filter，注册Filter有三种方法：
 
@@ -146,6 +134,75 @@ public CreateResult PostLogin(LoginEntity entity)
      //TODO:添加验证逻辑
      return new CreateResult() {Id = "123456"};
 }
+
+最后一个Filter：ExceptionFilter
+
+顾名思义，这个Filter是用来进行异常处理的，当业务发生未处理的异常，我们是不希望用户接收到黄页或者其他用户无法解析的信息的，我们可以使用ExceptionFilter来进行统一处理：
+
+    public class PortalExceptionFilter : IExceptionFilter
+    {
+        public bool AllowMultiple { get { return true; } }
+
+        public Task ExecuteExceptionFilterAsync(
+                HttpActionExecutedContext actionExecutedContext,
+                CancellationToken cancellationToken)
+        {
+            return Task.Factory.StartNew(() =>
+            {
+                Logger.Error("web service error", actionExecutedContext.Exception);
+
+
+
+                if (actionExecutedContext.Exception is TopException)
+                {
+                    //TODO:记录日志
+                    actionExecutedContext.Response = actionExecutedContext.Request.CreateResponse(
+                            HttpStatusCode.BadRequest, new { Message = actionExecutedContext.Exception.Message });
+                }
+                else
+                {
+                    //如果截获异常是我没无法预料的异常，则将通用的返回信息返回给用户，避免泄露过多信息，也便于用户处理
+
+                    //TODO:记录日志
+                    actionExecutedContext.Response =
+                            actionExecutedContext.Request.CreateResponse(HttpStatusCode.InternalServerError,
+                                new { Message = "服务器被外星人拐跑了！" });
+                }
+
+
+
+
+            }, cancellationToken);
+        }
+    }
+    
+        public static class WebApiConfig
+    {
+        public static void Register(HttpConfiguration config)
+        {
+            // Web API configuration and services
+            //跨域配置
+            config.EnableCors(new EnableCorsAttribute("*", "*", "*"));
+            //注册全局Filter
+            config.Filters.Add(new ApiAuthorizeAttribute());
+            config.Filters.Add(new PortalExceptionFilter());
+            // Web API routes
+            config.MapHttpAttributeRoutes();
+
+            config.Routes.MapHttpRoute(
+                name: "DefaultApi",
+                routeTemplate: "api/{controller}/{id}",
+                defaults: new { id = RouteParameter.Optional }
+            );
+
+            #region api数据通过json格式返回
+            var jsonFormatter = config.Formatters.OfType<JsonMediaTypeFormatter>().First();
+            jsonFormatter.SerializerSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();
+            #endregion
+
+        }
+    }
+
 
 **********************************************************************************
 陨石坑之webapi使用filter
