@@ -255,3 +255,53 @@ public class FilterConfig
 复制代码
 运行调试，ok，success!
 参考 https://www.cnblogs.com/shi-meng/p/4635571.html
+最后：exception filter的详细代码：
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Web;
+using System.Web.Http.Filters;
+using WebApiDemo.Util;
+using WebApiDemo.Util.Logger;
+using System.Web.Http;
+using System.Net.Http;
+using System.Net.Http.Formatting;
+
+namespace WebApiDemo.Filters
+{
+    public class PortalExceptionFilter : IExceptionFilter
+    {
+        public bool AllowMultiple { get { return true; } }
+
+        public Task ExecuteExceptionFilterAsync(
+                HttpActionExecutedContext actionExecutedContext,
+                CancellationToken cancellationToken)
+        {
+            return Task.Factory.StartNew(() =>
+            {
+                Logger.Error("web service error", actionExecutedContext.Exception);
+                if (actionExecutedContext.Exception is TopException)
+                {
+                    //TODO:记录日志
+                    actionExecutedContext.Response = actionExecutedContext.Request.CreateResponse(
+                            HttpStatusCode.BadRequest, new { Message = actionExecutedContext.Exception.Message });
+                }
+                else
+                {
+                    //如果截获异常是我没无法预料的异常，则将通用的返回信息返回给用户，避免泄露过多信息，也便于用户处理
+                    //TODO:记录日志
+                    actionExecutedContext.Response =
+                            actionExecutedContext.Request.CreateResponse(HttpStatusCode.InternalServerError,
+                                new { Message = "服务器被外星人拐跑了！" });
+                }
+            }, cancellationToken);
+        }
+    }
+}
+
+
+
