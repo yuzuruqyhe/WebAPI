@@ -7,23 +7,40 @@ http://www.cnblogs.com/UliiAn/p/5402146.html
 
 
    首先，我们实现一个AuthorizatoinFilter可以用以简单的权限控制：
-public class AuthFilterAttribute : AuthorizationFilterAttribute
+    public class PortalExceptionFilter : IExceptionFilter
     {
-        public override void OnAuthorization(HttpActionContext actionContext)
-        {
-            //如果用户方位的Action带有AllowAnonymousAttribute，则不进行授权验证
-            if (actionContext.ActionDescriptor.GetCustomAttributes<AllowAnonymousAttribute>().Any())
-            {
-                return;
-            }
-            var verifyResult = actionContext.Request.Headers.Authorization!=null &&  //要求请求中需要带有Authorization头
-                               actionContext.Request.Headers.Authorization.Parameter == "123456"; //并且Authorization参数为123456则验证通过
+        public bool AllowMultiple { get { return true; } }
 
-            if (!verifyResult)
+        public Task ExecuteExceptionFilterAsync(
+                HttpActionExecutedContext actionExecutedContext,
+                CancellationToken cancellationToken)
+        {
+            return Task.Factory.StartNew(() =>
             {
-                //如果验证不通过，则返回401错误，并且Body中写入错误原因
-                actionContext.Response = actionContext.Request.CreateErrorResponse(HttpStatusCode.Unauthorized,new HttpError("Token 不正确"));
-            }
+                Logger.Error("web service error", actionExecutedContext.Exception);
+
+
+
+                if (actionExecutedContext.Exception is TopException)
+                {
+                    //TODO:记录日志
+                    actionExecutedContext.Response = actionExecutedContext.Request.CreateResponse(
+                            HttpStatusCode.BadRequest, new { Message = actionExecutedContext.Exception.Message });
+                }
+                else
+                {
+                    //如果截获异常是我没无法预料的异常，则将通用的返回信息返回给用户，避免泄露过多信息，也便于用户处理
+
+                    //TODO:记录日志
+                    actionExecutedContext.Response =
+                            actionExecutedContext.Request.CreateResponse(HttpStatusCode.InternalServerError,
+                                new { Message = "服务器被外星人拐跑了！" });
+                }
+
+
+
+
+            }, cancellationToken);
         }
     }
 
