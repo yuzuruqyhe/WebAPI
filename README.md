@@ -158,6 +158,7 @@ public CreateResult PostLogin(LoginEntity entity)
                     //TODO:记录日志
                     actionExecutedContext.Response = actionExecutedContext.Request.CreateResponse(
                             HttpStatusCode.BadRequest, new { Message = actionExecutedContext.Exception.Message });
+                            //需要引入using System.Net.Http.Formatting; 否则 CreateResponse不好使
                 }
                 else
                 {
